@@ -1,3 +1,4 @@
+import math
 from typing import List, Tuple
 
 import torch
@@ -5,13 +6,23 @@ import torch.nn as nn
 import tqdm
 
 
-class Score:
+class AbstractScore:
+	def learn(self):
+		raise NotImplementedError
+	
+	def sample_langevin(self):
+		raise NotImplementedError
+	
+	def score(self):
+		raise NotImplementedError
+
+class Score2d(AbstractScore):
 	def __init__(
 			self, 
-			score_approximator: nn.Module,
+			model: nn.Module,
 			optimizer: torch.optim.Optimizer,
 			distribution: torch.distributions.distribution.Distribution):
-		self.score_approximator = score_approximator
+		self.model = model 
 		self.optimizer = optimizer
 		self.distribution = distribution
 	
@@ -23,12 +34,12 @@ class Score:
 		) -> Tuple[List[float], List[float]]:
 		loss_history, grad_norm_history = [], []
 		for _ in tqdm.trange(n_iters):
-			x_batch = self.distribution.sample()
+			x_batch = self.distribution.sample((n_samples_per_iter, ))
 			x_batch.requires_grad = True
 	
-			score = self.score_approximator(x_batch)
+			score = self.model(x_batch)
 			jac = torch.autograd.functional.jacobian(
-				lambda x: self.score_approximator(x).sum(dim=0), 
+				lambda x: self.model(x).sum(dim=0), 
 				x_batch, 
 				create_graph=True
 			).permute(1, 0, 2)
@@ -41,7 +52,7 @@ class Score:
 			loss.backward()
 	
 			grad_norm = torch.nn.utils.clip_grad_norm_(
-				self.score_approximator.parameters(), torch.inf)
+				self.model.parameters(), torch.inf)
 			grad_norm_history.append(grad_norm)
 			self.optimizer.step()
 
@@ -53,14 +64,22 @@ class Score:
 			n_steps: int,
 			epsilon: float
 		) -> torch.Tensor:
-		x = init_samples
+		x = init_samples.clone()
 		for _ in tqdm.trange(n_steps):
-			x += self.score_approximator(x) / 2 * epsilon
-			x += torch.sqrt(epsilon) * torch.randn_like(x)
+			with torch.no_grad():
+				x += self.model(x) / 2 * epsilon
+			x += math.sqrt(epsilon) * torch.randn_like(x)
 		return x
 	
-	def score(self) -> torch.Tensor:
-		pass
-
-	def log_prob(self) -> torch.Tensor:
-		pass
+	def score(
+			self, 
+			x_min: float, x_max: float, 
+			y_min: float, y_max: float, 
+			step: float
+		) -> Tuple[torch.Tensor, torch.Tensor]:
+		grid = torch.meshgrid(
+			torch.arange(x_min, x_max, step), torch.arange(y_min, y_max, step))
+		grid = torch.stack(grid).reshape(2, -1).T
+		with torch.no_grad():
+			score = self.model(grid)
+		return grid, score
