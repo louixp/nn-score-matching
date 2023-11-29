@@ -7,16 +7,6 @@ import tqdm
 
 
 class AbstractScore:
-	def learn(self):
-		raise NotImplementedError
-	
-	def sample_langevin(self):
-		raise NotImplementedError
-	
-	def score(self):
-		raise NotImplementedError
-
-class Score2d(AbstractScore):
 	def __init__(
 			self, 
 			model: nn.Module,
@@ -26,6 +16,30 @@ class Score2d(AbstractScore):
 		self.optimizer = optimizer
 		self.distribution = distribution
 	
+	def learn(self):
+		raise NotImplementedError
+	
+	def sample_langevin(
+			self,
+			init_samples: torch.Tensor,
+			n_steps: int,
+			epsilon: float
+		) -> torch.Tensor:
+		x = init_samples.clone()
+		for _ in tqdm.trange(n_steps):
+			with torch.no_grad():
+				x += self.model(x) / 2 * epsilon
+			x += math.sqrt(epsilon) * torch.randn_like(x)
+		return x
+	
+	def score_true(self):
+		raise NotImplementedError
+
+	def score_approx(self):
+		raise NotImplementedError
+
+
+class Score2d(AbstractScore):
 	def learn(self, 
 		   *,
 		   n_samples_per_iter: int,
@@ -58,20 +72,15 @@ class Score2d(AbstractScore):
 
 		return loss_history, grad_norm_history
 
-	def sample_langevin(
-			self,
-			init_samples: torch.Tensor,
-			n_steps: int,
-			epsilon: float
-		) -> torch.Tensor:
-		x = init_samples.clone()
-		for _ in tqdm.trange(n_steps):
-			with torch.no_grad():
-				x += self.model(x) / 2 * epsilon
-			x += math.sqrt(epsilon) * torch.randn_like(x)
-		return x
+	def score_true(
+			self, 
+			x_min: float, x_max: float, 
+			y_min: float, y_max: float, 
+			step: float
+		) -> Tuple[torch.Tensor, torch.Tensor]:
+		return 
 	
-	def score(
+	def score_approx(
 			self, 
 			x_min: float, x_max: float, 
 			y_min: float, y_max: float, 
