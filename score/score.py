@@ -1,3 +1,4 @@
+from copy import deepcopy
 import math
 from typing import List, Tuple
 
@@ -44,8 +45,10 @@ class Score2d(AbstractScore):
 		   *,
 		   n_samples_per_iter: int,
 		   n_iters: int,
+		   keep_best: bool = False,
 		   debug: bool = False
 		) -> Tuple[List[float], List[float]]:
+		best_loss, best_model = float('inf'), None
 		loss_history, grad_norm_history = [], []
 		for _ in tqdm.trange(n_iters):
 			x_batch = self.distribution.sample((n_samples_per_iter, ))
@@ -61,6 +64,8 @@ class Score2d(AbstractScore):
 	
 			loss = torch.mean(torch.linalg.norm(score, dim=1) ** 2 + 2 * tr_jac)
 			loss_history.append(loss.item())
+			if keep_best and loss < best_loss:
+				best_model = deepcopy(self.model)
 
 			self.optimizer.zero_grad()
 			loss.backward()
@@ -70,6 +75,8 @@ class Score2d(AbstractScore):
 			grad_norm_history.append(grad_norm)
 			self.optimizer.step()
 
+		if keep_best:
+			self.model = best_model
 		return loss_history, grad_norm_history
 
 	def score_true(
