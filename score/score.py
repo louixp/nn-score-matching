@@ -17,7 +17,36 @@ class AbstractScore:
 		self.optimizer = optimizer
 		self.distribution = distribution
 	
-	def learn(self):
+	def learn(self, 
+		   *,
+		   n_samples_per_iter: int,
+		   n_iters: int,
+		   keep_best: bool = False,
+		) -> Tuple[List[float], List[float]]:
+		best_loss, best_model = float('inf'), None
+		loss_history, grad_norm_history = [], []
+		for _ in tqdm.trange(n_iters):
+			x_batch = self.distribution.sample((n_samples_per_iter, ))
+			x_batch.requires_grad = True
+
+			loss = self._compute_loss(x_batch)
+			loss_history.append(loss.item())
+			if keep_best and loss < best_loss:
+				best_model = deepcopy(self.model)
+
+			self.optimizer.zero_grad()
+			loss.backward()
+	
+			grad_norm = torch.nn.utils.clip_grad_norm_(
+				self.model.parameters(), torch.inf)
+			grad_norm_history.append(grad_norm)
+			self.optimizer.step()
+
+		if keep_best:
+			self.model = best_model
+		return loss_history, grad_norm_history
+	
+	def _compute_loss(self, samples: torch.Tensor) -> torch.Tensor:
 		raise NotImplementedError
 	
 	def sample_langevin(
@@ -41,43 +70,15 @@ class AbstractScore:
 
 
 class Score2d(AbstractScore):
-	def learn(self, 
-		   *,
-		   n_samples_per_iter: int,
-		   n_iters: int,
-		   keep_best: bool = False,
-		   debug: bool = False
-		) -> Tuple[List[float], List[float]]:
-		best_loss, best_model = float('inf'), None
-		loss_history, grad_norm_history = [], []
-		for _ in tqdm.trange(n_iters):
-			x_batch = self.distribution.sample((n_samples_per_iter, ))
-			x_batch.requires_grad = True
-	
-			score = self.model(x_batch)
-			jac = torch.autograd.functional.jacobian(
-				lambda x: self.model(x).sum(dim=0), 
-				x_batch, 
-				create_graph=True
-			).permute(1, 0, 2)
-			tr_jac = jac[:, 0, 0] + jac[:, 1, 1]
-	
-			loss = torch.mean(torch.linalg.norm(score, dim=1) ** 2 + 2 * tr_jac)
-			loss_history.append(loss.item())
-			if keep_best and loss < best_loss:
-				best_model = deepcopy(self.model)
-
-			self.optimizer.zero_grad()
-			loss.backward()
-	
-			grad_norm = torch.nn.utils.clip_grad_norm_(
-				self.model.parameters(), torch.inf)
-			grad_norm_history.append(grad_norm)
-			self.optimizer.step()
-
-		if keep_best:
-			self.model = best_model
-		return loss_history, grad_norm_history
+	def _compute_loss(self, samples: torch.Tensor) -> torch.Tensor:
+		score = self.model(samples)
+		jac = torch.autograd.functional.jacobian(
+			lambda x: self.model(x).sum(dim=0), 
+			samples, 
+			create_graph=True
+		).permute(1, 0, 2)
+		tr_jac = jac[:, 0, 0] + jac[:, 1, 1]
+		return torch.mean(torch.linalg.norm(score, dim=1) ** 2 + 2 * tr_jac)
 
 	def score_true(
 			self, 
