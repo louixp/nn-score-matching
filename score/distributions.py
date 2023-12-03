@@ -43,3 +43,15 @@ class BoxedStandardGaussian:
 		out_of_bounds = (samples > 1) | (samples < -1)
 		out_of_bounds = out_of_bounds[:, 0] | out_of_bounds[:, 1]
 		return samples[~out_of_bounds][:sample_shape[0]]
+	
+class NoisyUniform2D:
+	# TODO: make this a D.Distribution
+	def __init__(self, noise_level):
+		self.uniform = uniform_2d()
+		self.standard_gaussian = standard_gaussian_2d()
+		self.noise_level = noise_level
+	
+	def sample(self, sample_shape):
+		samples = self.uniform.sample(sample_shape)
+		noise = self.standard_gaussian.sample(sample_shape)
+		return samples + self.noise_level * noise
