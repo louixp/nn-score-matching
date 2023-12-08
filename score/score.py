@@ -100,3 +100,25 @@ class Score2d(AbstractScore):
 		with torch.no_grad():
 			score = self.model(grid)
 		return grid, score
+	
+class Score1d(AbstractScore):
+	def _compute_loss(self, samples: torch.Tensor) -> torch.Tensor:
+		if len(samples.shape) == 1:
+			samples = torch.unsqueeze(samples, 1)
+		score = self.model(samples)
+		tr_jac = torch.autograd.functional.jacobian(
+			lambda x: self.model(x).sum(), samples, create_graph=True)
+		return torch.mean(score ** 2 + 2 * tr_jac)
+	
+	def score_true(
+			self, x_min: float, x_max: float, step: float
+		) -> Tuple[torch.Tensor, torch.Tensor]:
+		return 
+	
+	def score_approx(
+			self, x_min: float, x_max: float, step: float
+		) -> Tuple[torch.Tensor, torch.Tensor]:
+		grid = torch.unsqueeze(torch.arange(x_min, x_max, step), 1)
+		with torch.no_grad():
+			score = self.model(grid)
+		return grid, score
