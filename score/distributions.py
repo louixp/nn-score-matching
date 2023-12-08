@@ -55,3 +55,14 @@ class NoisyUniform2D:
 		samples = self.uniform.sample(sample_shape)
 		noise = self.standard_gaussian.sample(sample_shape)
 		return samples + self.noise_level * noise
+	
+class BrownianDiffusionJoint:
+	def __init__(self, base_distribution, max_temp):
+		self.base_distribution = base_distribution
+		self.max_temp = max_temp
+	
+	def sample(self, sample_shape):
+		samples = self.base_distribution.sample(sample_shape)
+		temps = torch.rand(sample_shape) * self.max_temp
+		noise = torch.randn(sample_shape)
+		return torch.stack((samples + temps * noise, temps)).T
