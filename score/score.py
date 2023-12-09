@@ -22,10 +22,12 @@ class AbstractScore:
 		   n_samples_per_iter: int,
 		   n_iters: int,
 		   keep_best: bool = False,
+		   use_tqdm: bool = True,
 		) -> Tuple[List[float], List[float]]:
 		best_loss, best_model = float('inf'), None
 		loss_history, grad_norm_history = [], []
-		for _ in tqdm.trange(n_iters):
+		iters = tqdm.trange(n_iters) if use_tqdm else range(n_iters)
+		for _ in iters:
 			x_batch = self.distribution.sample((n_samples_per_iter, ))
 			x_batch.requires_grad = True
 
@@ -53,10 +55,12 @@ class AbstractScore:
 			self,
 			init_samples: torch.Tensor,
 			n_steps: int,
-			epsilon: float
+			epsilon: float,
+			use_tqdm: bool = True
 		) -> torch.Tensor:
 		x = init_samples.clone()
-		for _ in tqdm.trange(n_steps):
+		iters = tqdm.trange(n_steps) if use_tqdm else range(n_steps)
+		for _ in iters:
 			with torch.no_grad():
 				x += self.model(x) / 2 * epsilon
 			x += math.sqrt(epsilon) * torch.randn_like(x)

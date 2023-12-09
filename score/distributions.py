@@ -7,9 +7,10 @@ def standard_gaussian_1d():
 def standard_gaussian_2d():
 	return D.multivariate_normal.MultivariateNormal(torch.zeros(2), torch.eye(2))
 
-def symmetric_gaussian_mixture_1d():
+def symmetric_gaussian_mixture_1d(mode_dist=10):
 	mix = D.Categorical(torch.ones(2,))
-	comp = D.Normal(torch.tensor([-5., 5.]), torch.ones(2))
+	comp = D.Normal(
+		torch.tensor([-mode_dist / 2., mode_dist / 2]), torch.ones(2))
 	return torch.distributions.mixture_same_family.MixtureSameFamily(mix, comp)
 
 def symmetric_gaussian_mixture_2d():
