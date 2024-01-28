@@ -125,6 +125,14 @@ class Score1d(AbstractScore):
 		pdf = compute_pdf_from_logp(log_p, step)
 		return grid, pdf
 	
+	def pdf_true(
+			self, x_min: float, x_max: float, step: float
+		) -> Tuple[torch.Tensor, torch.Tensor]:
+		grid = torch.arange(x_min, x_max, step)
+		log_p = self.distribution.log_prob(grid)
+		pdf = compute_pdf_from_logp(log_p, step)
+		return grid, pdf
+	
 class TemperedDistributionScore(Score2d):
 	def conditional_score_approx(
 			self, x_min: float, x_max: float, step: float, temperature: float
