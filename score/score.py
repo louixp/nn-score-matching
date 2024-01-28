@@ -72,6 +72,8 @@ class AbstractScore:
 	def score_approx(self):
 		raise NotImplementedError
 
+	def pdf_approx(self):
+		raise NotImplementedError
 
 class Score2d(AbstractScore):
 	def _compute_loss(self, samples: torch.Tensor) -> torch.Tensor:
@@ -105,6 +107,9 @@ class Score2d(AbstractScore):
 			score = self.model(grid)
 		return grid, score
 	
+	def pdf_approx(self):
+		return
+	
 class Score1d(AbstractScore):
 	def _compute_loss(self, samples: torch.Tensor) -> torch.Tensor:
 		if len(samples.shape) == 1:
@@ -126,3 +131,21 @@ class Score1d(AbstractScore):
 		with torch.no_grad():
 			score = self.model(grid)
 		return grid, score
+	
+	def pdf_approx(
+			self, x_min: float, x_max: float, step: float
+		) -> Tuple[torch.Tensor, torch.Tensor]:
+		grid, score = self.score_approx(x_min, x_max, step)
+		grid, score = grid.squeeze(), score.squeeze()
+		pdf = compute_pdf_from_score(score, step)
+		return grid, pdf
+	
+def compute_pdf_from_score(score: torch.Tensor, step: float) -> torch.Tensor:
+	assert len(score.shape) == 1
+	log_p = torch.cumsum(score * step, dim=0)
+	max_log_p = torch.max(log_p)
+	log_p_adjusted = log_p - max_log_p
+	p_unormalized = torch.exp(log_p_adjusted)
+	partition = torch.sum(p_unormalized * step)
+	pdf = p_unormalized / partition
+	return pdf
