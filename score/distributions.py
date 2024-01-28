@@ -9,10 +9,10 @@ def standard_gaussian_1d():
 def standard_gaussian_2d():
 	return D.multivariate_normal.MultivariateNormal(torch.zeros(2), torch.eye(2))
 
-def symmetric_gaussian_mixture_1d(mode_dist=10):
+def symmetric_gaussian_mixture_1d(mode_dist=10, scale=1):
 	mix = D.Categorical(torch.ones(2,))
 	comp = D.Normal(
-		torch.tensor([-mode_dist / 2., mode_dist / 2]), torch.ones(2))
+		torch.tensor([-mode_dist / 2., mode_dist / 2]), torch.ones(2) * scale)
 	return torch.distributions.mixture_same_family.MixtureSameFamily(mix, comp)
 
 def symmetric_gaussian_mixture_2d():
@@ -57,13 +57,24 @@ class NoisyUniform2D(D.Distribution):
 		noise = self.standard_gaussian.sample(sample_shape)
 		return samples + self.noise_level * noise
 	
-class BrownianDiffusionJoint:
-	def __init__(self, base_distribution, max_temp):
+class BrownianDiffusionJoint(D.Distribution):
+	def __init__(self, base_distribution, max_temperature):
 		self.base_distribution = base_distribution
-		self.max_temp = max_temp
+		self.max_temperature = max_temperature
 	
 	def sample(self, sample_shape):
 		samples = self.base_distribution.sample(sample_shape)
-		temps = torch.rand(sample_shape) * self.max_temp
+		temps = torch.rand(sample_shape) * self.max_temperature
 		noise = torch.randn(sample_shape)
 		return torch.stack((samples + temps * noise, temps)).T
+	
+class BrownianDiffusionGaussianMixture(BrownianDiffusionJoint):
+	def __init__(self, mode_dist, max_temperature):
+		self.mode_dist = mode_dist
+		super().__init__(
+			symmetric_gaussian_mixture_1d(mode_dist=mode_dist), max_temperature)
+		
+	def conditional_log_prob(self, value, *, temperature):
+		conditional_mixture = symmetric_gaussian_mixture_1d(
+			mode_dist=self.mode_dist, scale=math.sqrt(1+temperature ** 2))
+		return conditional_mixture.log_prob(value)

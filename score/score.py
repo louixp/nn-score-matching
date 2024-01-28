@@ -86,14 +86,6 @@ class Score2d(AbstractScore):
 		tr_jac = jac[:, 0, 0] + jac[:, 1, 1]
 		return torch.mean(torch.linalg.norm(score, dim=1) ** 2 + 2 * tr_jac)
 
-	def score_true(
-			self, 
-			x_min: float, x_max: float, 
-			y_min: float, y_max: float, 
-			step: float
-		) -> Tuple[torch.Tensor, torch.Tensor]:
-		return 
-	
 	def score_approx(
 			self, 
 			x_min: float, x_max: float, 
@@ -107,9 +99,6 @@ class Score2d(AbstractScore):
 			score = self.model(grid)
 		return grid, score
 	
-	def pdf_approx(self):
-		return
-	
 class Score1d(AbstractScore):
 	def _compute_loss(self, samples: torch.Tensor) -> torch.Tensor:
 		if len(samples.shape) == 1:
@@ -118,11 +107,6 @@ class Score1d(AbstractScore):
 		tr_jac = torch.autograd.functional.jacobian(
 			lambda x: self.model(x).sum(), samples, create_graph=True)
 		return torch.mean(score ** 2 + 2 * tr_jac)
-	
-	def score_true(
-			self, x_min: float, x_max: float, step: float
-		) -> Tuple[torch.Tensor, torch.Tensor]:
-		return 
 	
 	def score_approx(
 			self, x_min: float, x_max: float, step: float
@@ -137,12 +121,40 @@ class Score1d(AbstractScore):
 		) -> Tuple[torch.Tensor, torch.Tensor]:
 		grid, score = self.score_approx(x_min, x_max, step)
 		grid, score = grid.squeeze(), score.squeeze()
-		pdf = compute_pdf_from_score(score, step)
+		log_p = torch.cumsum(score * step, dim=0)
+		pdf = compute_pdf_from_logp(log_p, step)
 		return grid, pdf
 	
-def compute_pdf_from_score(score: torch.Tensor, step: float) -> torch.Tensor:
-	assert len(score.shape) == 1
-	log_p = torch.cumsum(score * step, dim=0)
+class TemperedDistributionScore(Score2d):
+	def conditional_score_approx(
+			self, x_min: float, x_max: float, step: float, temperature: float
+		) -> Tuple[torch.Tensor, torch.Tensor]:
+		grid = torch.arange(x_min, x_max, step)
+		grid = torch.stack((grid, torch.ones_like(grid) * temperature)).T
+		with torch.no_grad():
+			score = self.model(grid)
+		return grid.T[0], score.T[0]
+	
+	def conditional_pdf_approx(
+			self, x_min: float, x_max: float, step: float, temperature: float
+		) -> Tuple[torch.Tensor, torch.Tensor]:
+		grid, score = self.conditional_score_approx(
+			x_min, x_max, step, temperature)
+		log_p = torch.cumsum(score * step, dim=0)
+		pdf = compute_pdf_from_logp(log_p, step)
+		return grid, pdf
+	
+	def conditional_pdf_true(
+			self, x_min: float, x_max: float, step: float, temperature: float
+		) -> Tuple[torch.Tensor, torch.Tensor]:
+		grid = torch.arange(x_min, x_max, step)
+		log_p = self.distribution.conditional_log_prob(
+			grid, temperature=temperature)
+		pdf = compute_pdf_from_logp(log_p, step)
+		return grid, pdf
+
+def compute_pdf_from_logp(log_p: torch.Tensor, step: float) -> torch.Tensor:
+	assert len(log_p.shape) == 1
 	max_log_p = torch.max(log_p)
 	log_p_adjusted = log_p - max_log_p
 	p_unormalized = torch.exp(log_p_adjusted)
